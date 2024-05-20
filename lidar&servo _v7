@@ -1,0 +1,302 @@
+#include <TFMPlus.h>  
+TFMPlus luna;         
+#include <SoftwareSerial.h>
+SoftwareSerial mySerial(11, 12);
+#define L_PIN1 5
+#define L_PIN2 6
+#define L_PIN3 7
+#define L_PIN4 8
+#define SERVO_PIN 3 
+#define LED_pin 13
+#define Resist_pin 2
+#define MIN_DIST 20
+#define MAX_DIST 300
+#define MIN_ANGLE 80
+#define MAX_ANGLE 20
+#define dist_diff_limit 2
+#define freq 100
+#define f_delay 1000 / freq
+#define twitch_limit 30000
+#define standby 30000
+#define BatPin A1
+
+int16_t Dist = 0;
+int16_t Flux = 0;
+int16_t Temp = 0;
+int16_t Dist2 = (MAX_DIST + MIN_DIST) / 2;
+int16_t DistAvg = 0;  //2 byte positve variable that can be changed while running
+float leftstandby = 0;
+int angle = (MAX_ANGLE + MIN_ANGLE) / 2;
+int twitch_count = 0;
+int dist_compare1 = (MAX_DIST + MIN_DIST) / 2;
+int dist_compare2 = (MAX_DIST + MIN_DIST) / 2;
+int dist_diff = (MAX_DIST + MIN_DIST) / 2;
+int analog_eqv = map(angle, 0, 162, 40, 255);  //Servo only respond to ~35-255
+int counter=0;
+void setup() {
+  pinMode(LED_pin, OUTPUT);
+  pinMode(Resist_pin, OUTPUT);
+  pinMode(L_PIN1, OUTPUT);
+  pinMode(L_PIN2, OUTPUT);
+  pinMode(L_PIN3, OUTPUT);
+  pinMode(L_PIN4, OUTPUT);
+  pinMode(BatPin, INPUT);
+
+  digitalWrite(L_PIN1, HIGH);
+  digitalWrite(L_PIN2, HIGH); 
+  digitalWrite(L_PIN3, HIGH);
+  digitalWrite(L_PIN4, HIGH);
+  digitalWrite(LED_pin, HIGH); // indicate luna on
+
+  Serial.begin(9600);  // hardware serial for laptop comms
+  delay(20);
+  mySerial.begin(115200);  // software serial for luna comms
+  delay(20);
+  luna.begin(&mySerial);  // pass s serial to luna
+
+  angle = MIN_ANGLE;  // go front
+  analog_eqv = map(angle, 0, 162, 40, 255);
+  analogWrite(SERVO_PIN, analog_eqv);
+  delay(7000);
+
+  angle = MAX_ANGLE;  // go back
+  analog_eqv = map(angle, 0, 162, 40, 255);
+  analogWrite(SERVO_PIN, analog_eqv);
+  delay(7000);
+
+  angle = (MIN_ANGLE + MAX_ANGLE) / 2;  // go middle
+  analog_eqv = map(angle, 0, 162, 40, 255);
+  analogWrite(SERVO_PIN, analog_eqv);
+  delay(5000);
+}
+void loop() {
+  luna.getData(Dist, Flux, Temp);
+  Serial.println(Dist);
+
+  if (Dist == 0) {
+    Dist = MAX_DIST;
+  } else if (Dist < MIN_DIST) {
+    Dist = MIN_DIST;
+  } else if (Dist > MAX_DIST) {
+    Dist = MAX_DIST;
+  }
+  Serial.println(Dist);
+
+  DistAvg = (Dist + Dist2) / 2;
+  angle = map(DistAvg, MIN_DIST, MAX_DIST, MIN_ANGLE, MAX_ANGLE);
+  analog_eqv = map(angle, 0, 162, 40, 250);
+  analogWrite(SERVO_PIN, analog_eqv);
+  Dist2 = Dist;
+  delay(f_delay);  //^go to measurement
+  twitch_count = twitch_count + f_delay;
+  //Serial.println(twitch_count);
+
+    if (twitch_count > twitch_limit) {
+    twitch_count = 0;
+    //Serial.println("it reaches");
+     /* angle = MAX_ANGLE;
+    analog_eqv = map(angle, 0, 152, 40, 250);
+    analogWrite(SERVO_PIN, analog_eqv);
+    delay(20);
+    angle = MIN_ANGLE;
+    analog_eqv = map(angle, 0, 152, 40, 250);
+    analogWrite(SERVO_PIN, analog_eqv);
+    delay(20);*/
+    dist_compare1 = Dist;
+    dist_diff = abs(dist_compare1 - dist_compare2);
+    dist_compare2 = dist_compare1;
+  }  //^twitch every 30 secs
+  leftstandby=0;
+
+  while (dist_diff < dist_diff_limit) {
+    digitalWrite(L_PIN1, LOW);
+    digitalWrite(L_PIN2, LOW);
+    digitalWrite(L_PIN3, LOW);
+    digitalWrite(L_PIN4, LOW);
+    digitalWrite(LED_pin, LOW);
+    angle = MIN_ANGLE;
+    analog_eqv = map(angle, 0, 162, 40, 250);  //turn off
+    analogWrite(SERVO_PIN, analog_eqv);
+    delay(2000);
+
+    digitalWrite(L_PIN1, HIGH);
+    digitalWrite(L_PIN2, HIGH);
+    digitalWrite(L_PIN3, HIGH);
+    digitalWrite(L_PIN4, HIGH);
+    digitalWrite(LED_pin, HIGH);
+    delay(1500);
+
+  /*DistAvg = (Dist + Dist2) / 2;
+  angle = map(DistAvg, MIN_DIST, MAX_DIST, MIN_ANGLE, MAX_ANGLE);
+  analog_eqv = map(angle, 0, 152, 40, 250);
+  analogWrite(SERVO_PIN, analog_eqv);
+    angle = 44;
+    analog_eqv = map(angle, 0, 152, 40, 250);
+    analogWrite(SERVO_PIN, analog_eqv);
+    delay(1000);
+    angle = 46;
+    analog_eqv = map(angle, 0, 152, 40, 250);
+    analogWrite(SERVO_PIN, analog_eqv);
+    delay(1000);*/
+
+
+
+    luna.getData(Dist, Flux, Temp);
+    luna.getData(Dist, Flux, Temp);  //turn on measure
+    Serial.println("new cycle");
+    Serial.println(Dist);
+    if (Dist == 0) {
+      Dist = MAX_DIST;
+      Serial.println("dist is 0");
+    } else if (Dist < MIN_DIST) {
+      Dist = MIN_DIST;
+      Serial.println("dist is 1");
+    } else if (Dist > MAX_DIST) {
+      Dist = MAX_DIST;
+      Serial.println("dist is 2");
+    }
+
+    dist_compare1 = Dist;
+    Serial.println(Dist);
+    Serial.println(dist_compare1);
+    Serial.println(dist_compare2);
+    dist_diff = abs(dist_compare1 - dist_compare2);
+    dist_compare2 = dist_compare1;
+    Serial.println(dist_diff);
+    leftstandby=1;
+    Serial.println(leftstandby);
+    leftstandby=(analogRead(BatPin));
+    Serial.println((leftstandby));
+    leftstandby=((((leftstandby)/1023.00)*5.00));
+    Serial.println(leftstandby);}
+    
+
+  Serial.println(leftstandby);
+  Serial.println("yes");
+
+    if ((leftstandby>=4.00)){
+      Serial.println("yes");
+      while (counter<4){
+        angle = MAX_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        angle = MIN_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        counter=counter+1;
+        leftstandby=0;}
+        counter=0;
+        }
+
+       if ((leftstandby>=3.75)&&(leftstandby<4.00)){
+      Serial.println("yes");
+      while (counter<3){
+        angle = MAX_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        angle =MIN_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        counter=counter+1;
+        leftstandby=0;}
+        counter=0;
+        }
+
+       if ((leftstandby>=3.50)&&(leftstandby<3.75)){
+      Serial.println("yes");
+      while (counter<2){
+        angle = MAX_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        angle =MIN_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        counter=counter+1;
+        leftstandby=0;}
+        counter=0;
+        }
+
+      if ((leftstandby>=3.50)&&(leftstandby<3.30)){
+      Serial.println("yes");
+      while (counter<2){
+        angle = MAX_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        angle =MIN_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        counter=counter+1;
+        leftstandby=0;}
+        counter=0;
+        }
+
+       if ((leftstandby>0.00)&&(leftstandby<3.30)){
+      Serial.println("yes");
+      while (counter<1){
+        angle = MAX_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        angle =MIN_ANGLE;
+        analog_eqv = map(angle, 0, 162, 40, 255);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(1000);
+        counter=counter+1;
+        leftstandby=0;}
+        counter=0;
+        }
+
+
+
+        
+/*3.75 3.55 3.4*/
+    /*else if (leftstandby>3.75){
+      counter=1;
+      while (counter<4){
+        angle = ((MIN_ANGLE + MAX_ANGLE) / 4)+MIN_ANGLE;
+        analog_eqv = map(angle, 0, 152, 40, 250);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(500);
+        angle = (3*(MIN_ANGLE + MAX_ANGLE) / 4)+MIN_ANGLE;
+        analog_eqv = map(angle, 0, 152, 40, 250);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(500);
+        counter=counter+1;}
+        }
+    else if (leftstandby>3.55){
+      counter=1;
+      while (counter<3){
+        angle = ((MIN_ANGLE + MAX_ANGLE) / 4)+MIN_ANGLE;
+        analog_eqv = map(angle, 0, 152, 40, 250);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(500);
+        angle = (3*(MIN_ANGLE + MAX_ANGLE) / 4)+MIN_ANGLE;
+        analog_eqv = map(angle, 0, 152, 40, 250);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(500);
+        counter=counter+1;}
+        } /*3.75 3.55 3.4*/
+    /*else if (leftstandby>3.4){
+      counter=1;
+      while (counter<2){
+        angle = ((MIN_ANGLE + MAX_ANGLE) / 4)+MIN_ANGLE;
+        analog_eqv = map(angle, 0, 152, 40, 250);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(500);
+        angle = (3*(MIN_ANGLE + MAX_ANGLE) / 4)+MIN_ANGLE;
+        analog_eqv = map(angle, 0, 152, 40, 250);
+        analogWrite(SERVO_PIN, analog_eqv);
+        delay(500);
+        counter=counter+1;} /*3.75 3.55 3.4*/
+    /*}
+    }*/
+
+}
